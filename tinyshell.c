@@ -1,55 +1,213 @@
-#include <stdio.h>             //This is used for input output funtion like printf(), fgets(), perror()
-#include <stdlib.h>            //This is used for exit(), EXIT_FAILURE
-#include <string.h>           //This is used for string handling like strcmp(), strtok(), strcspn()
-#include <sys/types.h>        //Defines data types like pid_t
-#include <unistd.h>           // for shell programs gives fork(), execvp(), chdir()
-#define MAX_INPUT 1024       //Maximum characters user can type in one command
-#define MAX_ARGS 64         //Maximum number of arguments a command can have
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <termios.h>
+#include <sys/wait.h>
+
+#define MAX_INPUT 1024
+#define MAX_ARGS 64
+#define MAX_HISTORY 100
+#define MAX_COMMAND_LENGTH 1024
+
+static char history[MAX_HISTORY][MAX_COMMAND_LENGTH];
+static int history_count = 0;
+static int current_index = 0;
+
+static struct termios orig_termios;
+
+void disable_raw_mode () {
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+}
+
+void enable_raw_mode () {
+    tcgetattr(STDIN_FILENO, &orig_termios);
+    atexit(disable_raw_mode);
+
+    struct termios raw = orig_termios;
+    raw.c_lflag &= ~(ECHO | ICANON);
+    raw.c_cc[VMIN] = 1;
+    raw.c_cc[VTIME] = 0;
+
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+}
+
+void add_to_history(char const *cmd) {
+    if (history_count < MAX_HISTORY) {
+        strncpy(history[history_count], cmd, MAX_COMMAND_LENGTH - 1);
+        history[history_count][MAX_COMMAND_LENGTH - 1] = '\0';
+        history_count++;
+    }
+    current_index = history_count;
+}
+
+const char* get_history_up() {
+    if (current_index > 0) {
+        current_index--;
+        return history[current_index];
+    }
+    return NULL;
+}
+
+const char* get_history_down () {
+    if (current_index < history_count - 1) {
+        current_index++;
+        return history[current_index];
+    } else {
+        current_index = history_count;
+        return "";
+    }
+}
+
+void print_history () {
+    for (int i = 0; i < history_count; i++) {
+        printf("%d  %s\n", i + 1, history[i]);
+    }
+}
+
+void read_input(char* buffer) {
+    int len = 0;
+    buffer[len] = '\0';
+    current_index = history_count;
+
+    enable_raw_mode();
+
+    char c;
+
+    while(read(STDIN_FILENO, &c, 1) == 1) {
+        if (c == '\n') {
+            buffer[len] = '\0';
+            printf("\n");
+            break;
+        } else if (c == 127 || c== '\b') {
+            if (len > 0) {
+                len--;
+                buffer[len] = '\0';
+                printf("\b \b");
+                fflush(stdout);
+            }
+        } else if (c == 27) {
+            char seq[2];
+            if(read(STDIN_FILENO, &seq[0], 1) == 1 && read(STDIN_FILENO, &seq[1], 1) == 1) {
+                if (seq[0] == '[') {
+                    if (seq[1] == 'A') {
+                        const char*prevCmd = get_history_up();
+                        if (prevCmd) {
+                            for (int i = 0; i< len; i++) printf("\b \b");
+                            len = snprintf(buffer, MAX_INPUT, "%s", prevCmd);
+                            printf("%s", buffer);
+                            fflush(stdout);
+                        }
+                    } else if (seq[1] == 'B') {
+                        const char* nextCmd = get_history_down();
+                        for (int i = 0; i < len; i++) printf("\b \b");
+                        if(nextCmd) {
+                            len = snprintf(buffer, MAX_INPUT, "%s", nextCmd);
+                            printf("%s", buffer);
+                            fflush(stdout);
+                        } else {
+                            len = 0;
+                            buffer[0] = '\0';
+                            fflush(stdout);
+                        }
+                    }
+                }
+            }  
+        } else {
+            if (len < MAX_INPUT - 1) {
+                buffer[len++] = c;
+                buffer[len] = '\0';
+                write(STDOUT_FILENO, &c, 1);
+            }
+        }
+    }
+    disable_raw_mode();
+}
 
 int main () {
-    char input[MAX_INPUT];   //Stores what user types
-    char* args[MAX_ARGS];    //It stores command + arguments as an array of strings
+    char input[MAX_INPUT];
+    char* args[MAX_ARGS];
     
-    while (1) {             //Infinite Loop
-        printf("tsh> ");    // Prints prompt like a real terminal
-        fflush(stdout);     //ensures it prints immediately
+    while (1) {
+        printf("tsh> ");
+        fflush(stdout);
 
-        if(fgets(input, MAX_INPUT, stdin) == NULL) {     //Reads user input from keyboard
-            perror("fgets failed");
-            continue;
-        }
+        read_input(input);
 
+        input[strcspn(input, "\n")] = '\0';
 
-        input[strcspn(input, "\n")] = '\0';     //Remove newline from input
+        if(strlen(input) == 0) continue;
+
+        add_to_history(input);
 
         if(strcmp(input, "exit") == 0) {
-            printf("Have a nice day or night!!!");      //If user types exit → loop stops → program ends
+            printf("Have a nice day or night!!!");
             break;
         }
 
-        char* token = strtok(input, " ");     //splits the input by space and just run for one time and give the first token to while loop.
+        char* token = strtok(input, " ");
         int i = 0;
         
-        while (token != NULL && i < MAX_ARGS) {      //This will take make the token like args[0] = "ls" and so on.
+        while (token != NULL && i < MAX_ARGS - 1) {
             args[i++] = token;
-            token = strtok(NULL, " ");                     
+            token = strtok(NULL, " ");
+        }
+        args[i] = NULL;
+
+        /* ===================== ADDED SECTION START ===================== */
+
+        /* history command */
+        if(strcmp(args[0], "history") == 0) {
+            print_history();
+            continue;
         }
 
-        args[i] = NULL;     //execvp() requires last argument to be NULL
+        /* unset command */
+        if(strcmp(args[0], "unset") == 0) {
+            if (args[1] == NULL) {
+                printf("unset: missing variable name\n");
+            } else {
+                unsetenv(args[1]);
+            }
+            continue;
+        }
+
+        /* export command */
+        if(strcmp(args[0], "export") == 0) {
+            if (args[1] == NULL) {
+                printf("export: missing argument\n");
+            } else {
+                char *equal = strchr(args[1], '=');
+                if (equal == NULL) {
+                    printf("export: invalid format. Use VAR=value\n");
+                } else {
+                    *equal = '\0';
+                    char *name = args[1];
+                    char *value = equal + 1;
+                    if (setenv(name, value, 1) != 0) {
+                        perror("export failed");
+                    }
+                }
+            }
+            continue;
+        }
+
+        /* ===================== ADDED SECTION END ===================== */
 
         if (strcmp(args[0], "cd") == 0) {
             if (args[1] == NULL) {
-                perror("cd: Missing Arguments");     //we have do this thing sepratly because fork will not work in this child process will never excuite this thing.
+                perror("cd: Missing Arguments");
             } else if(chdir(args[1]) != 0) {
                 perror("cd failed");
             }
-            continue;    //continue will move the cursior to the top skipped the code below it because we don't have to fork.
+            continue;
         }
 
         pid_t pid = fork();
 
         if(pid == 0) {
-            execvp(args[0], args);    //In this code we are making the parent child process for the command exectution.
+            execvp(args[0], args);
             perror("execvp failed");
             exit(EXIT_FAILURE);
         } else if (pid > 0) {
@@ -62,29 +220,3 @@ int main () {
     }
     return 0;
 }
-
-//Cannot run (built-ins)	They must change the shell itself, but fork + execvp runs in a child which cannot affect the shell
-// Can run (external)	They are real programs that run separately; fork + execvp runs them fine without needing to touch the shell
-
-// These are the command we can run:-
-// pwd	
-// cat	
-// echo	
-// mkdir	
-// rm	
-// touch	
-// date	
-// whoami	
-// uname	
-// cp	
-// mv	
-
-// These are the command we cannot run:-
-// cd /path
-// exit
-// export VAR=value
-// unset VAR
-// history
-// alias name=cmd
-// unalias name
-// fg, bg, jobs

@@ -1,84 +1,186 @@
-# Tiny Shell (tsh) Project
+Tiny Shell (tsh) Project
 
-## Overview
-This is a simple Linux terminal (shell) implemented in C. It can execute most Linux commands and supports basic shell functionalities like changing directories. The shell uses **fork()**, **execvp()**, and **waitpid()** to manage commands by creating a child process for each command execution.
+Overview
 
----
+Tiny Shell (tsh) is a custom Linux shell implemented in C.
+It mimics basic terminal behavior and supports both built-in and external commands.
 
-## Features Implemented
+The shell uses the following system calls and libraries:
 
-1. **Prompt**
-   - Displays `tsh>` for user input, similar to a standard terminal.
+fork() → Create child processes
 
-2. **Read Input**
-   - Reads user input using `fgets()` and removes the newline character.
+execvp() → Execute external commands
 
-3. **Tokenization**
-   - Splits the input into a command and its arguments using `strtok()`.
+waitpid() → Wait for child process completion
 
-4. **Built-in Commands**
-   - `cd <directory>` → changes the shell's current working directory using `chdir()`.
-   - `exit` → exits the shell.
+termios → Enable raw mode for advanced input handling
 
-5. **External Commands**
-   - Any Linux command that exists as an external program (e.g., `ls`, `pwd`, `cat`) is executed using:
-     - `fork()` → creates a child process
-     - `execvp()` → replaces child process with the command
-     - `waitpid()` → parent waits for child to finish
+This project demonstrates core Operating System concepts such as process creation, environment variable management, and terminal control.
 
----
+Features Implemented
+1. Custom Prompt
 
-## Commands Supported
+Displays the following prompt before every command:
 
-### Works Automatically (via fork + execvp)
-| Command | Notes |
-|---------|-------|
-| ls | Lists directory contents |
-| pwd | Prints current directory |
-| cat <file> | Prints file contents |
-| mkdir <dir> | Creates a new directory |
-| rm <file> | Deletes a file |
-| touch <file> | Creates a new file or updates timestamp |
-| echo <text> | Prints text to the screen |
-| date | Shows current date and time |
-| whoami | Shows current user |
-| uname -a | Displays system information |
-| cp <src> <dst> | Copies files |
-| mv <src> <dst> | Moves or renames files |
+tsh>
 
-### Must Handle Manually (built-ins)
-| Command | Reason | Handling |
-|---------|--------|---------|
-| cd <directory> | Changes shell directory; cannot be run in child process | `chdir(args[1])` |
-| exit | Stops the shell; child cannot exit parent | `break` in loop |
-| export VAR=value | Changes shell environment; child cannot modify parent | Use `setenv()` (to implement) |
-| unset VAR | Removes environment variable | Use `unsetenv()` (to implement) |
-| history | Keeps track of past commands | Store in array and display (to implement) |
-| alias / unalias | Manage command aliases | Implement manually |
-| fg, bg, jobs | Job control managed by shell | Implement manually |
+2. Raw Mode Input (Arrow Key Support)
 
----
+Input is handled using raw terminal mode (termios) instead of fgets().
 
-## How It Works
+This enables:
 
-1. Print the prompt `tsh>`.
-2. Read user input using `fgets()`.
-3. Remove the newline character from input.
-4. Check for `exit` → break loop if found.
-5. Split input into `args[]` array.
-6. Check for `cd` → handle manually using `chdir()`.
-7. For all other commands:
-   - Create a child process using `fork()`.
-   - In child → execute command using `execvp()`.
-   - In parent → wait for child to finish using `waitpid()`.
-8. Loop back to step 1.
+Character-by-character input
 
----
+Backspace support
 
-Future Work
+Up/Down arrow key navigation through command history
 
-Implement environment variable management (export, unset)
-Implement command history
-Implement aliasing system
-Implement job control (fg, bg, jobs)
-Add signal handling (e.g., Ctrl+C, Ctrl+Z)
+Raw mode disables:
+
+Canonical mode (ICANON)
+
+Echo (ECHO)
+
+3. Command History
+
+Stores up to 100 previous commands
+
+Navigate history using:
+
+Up Arrow (↑) → Previous command
+
+Down Arrow (↓) → Next command
+
+history command prints all previously executed commands
+
+4. Built-in Commands
+
+These commands are handled directly inside the shell (without fork()):
+
+| Command            | Description                 | Implementation     |
+| ------------------ | --------------------------- | ------------------ |
+| `cd <dir>`         | Change directory            | `chdir()`          |
+| `exit`             | Exit the shell              | `break` from loop  |
+| `history`          | Print command history       | Stored in 2D array |
+| `export VAR=value` | Set environment variable    | `setenv()`         |
+| `unset VAR`        | Remove environment variable | `unsetenv()`       |
+
+5. Environment Variable Management
+Export
+export NAME=value
+
+Splits input at =
+
+Calls setenv(name, value, 1)
+
+Unset
+unset NAME
+
+Calls unsetenv(name)
+
+6. External Command Execution
+
+All non built-in commands are executed using:
+
+fork();
+execvp();
+waitpid();
+
+Example supported commands:
+
+ls
+pwd
+cat file
+mkdir dir
+rm file
+touch file
+echo text
+date
+whoami
+uname -a
+cp src dst
+mv src dst
+
+If execution fails:
+
+perror() displays the error
+
+Child process exits with EXIT_FAILURE
+
+Program Flow
+
+Print prompt tsh>
+
+Enable raw mode
+
+Read input character-by-character
+
+Support:
+
+Backspace
+
+Arrow key history navigation
+
+Disable raw mode
+
+Add command to history
+
+Tokenize input using strtok()
+
+Check for built-in commands
+
+If not built-in:
+
+fork()
+
+execvp()
+
+waitpid()
+
+Print exit status
+
+Repeat loop
+
+Data Structures Used
+History Storage
+history[MAX_HISTORY][MAX_COMMAND_LENGTH];
+
+Maximum 100 commands
+
+Each command up to 1024 characters
+
+Argument Storage
+char* args[MAX_ARGS];
+
+Maximum 64 arguments per command
+
+Compilation
+gcc tinyshell.c -o tsh
+Run
+./tsh
+Exit
+
+To exit the shell:
+
+exit
+
+The shell terminates gracefully.
+
+Technical Concepts Demonstrated
+
+Process creation (fork)
+
+Program execution (execvp)
+
+Process synchronization (waitpid)
+
+Environment variable management (setenv, unsetenv)
+
+Terminal raw mode (termios)
+
+Manual command parsing
+
+History management using arrays
+
+Basic shell architecture
