@@ -1,5 +1,5 @@
-#include <stdio.h>
-#include <stdlib.h>
+#include <stdio.h>                      // Standard Input Output
+#include <stdlib.h>                     // Standard Utility Library 
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -30,7 +30,7 @@ void enable_raw_mode () {
     raw.c_cc[VMIN] = 1;
     raw.c_cc[VTIME] = 0;
 
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);        //
 }
 
 void add_to_history(char const *cmd) {
@@ -199,7 +199,7 @@ int main () {
             if (args[1] == NULL) {
                 perror("cd: Missing Arguments");
             } else if(chdir(args[1]) != 0) {
-                perror("cd failed");
+                perror("cd failededee");
             }
             continue;
         }
